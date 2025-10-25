@@ -270,7 +270,7 @@ class SupabaseManager:
         try:
             # Use raw SQL with pgvector cosine similarity
             result = self.client.table('query_cache').select(
-                'id, user_query, hspcs_codes, rc_codes, reasoning, confidence_score, created_at'
+                'id, user_query, hcpcs_codes, rc_codes, reasoning, confidence_score, created_at'
             ).gte('confidence_score', 0.9).execute()
             
             # Filter and sort by similarity (this is a simplified approach)

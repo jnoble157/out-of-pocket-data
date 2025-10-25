@@ -93,7 +93,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE TABLE IF NOT EXISTS query_cache (
     id SERIAL PRIMARY KEY,
     user_query TEXT NOT NULL,
-    hspcs_codes JSONB NOT NULL DEFAULT '[]',
+    hcpcs_codes JSONB NOT NULL DEFAULT '[]',
     rc_codes JSONB NOT NULL DEFAULT '[]',
     reasoning TEXT NOT NULL DEFAULT '',
     confidence_score DECIMAL(3,2) NOT NULL CHECK (confidence_score >= 0.0 AND confidence_score <= 1.0),
@@ -125,7 +125,7 @@ CREATE OR REPLACE FUNCTION match_query_cache(
 RETURNS TABLE (
     id int,
     user_query text,
-    hspcs_codes jsonb,
+    hcpcs_codes jsonb,
     rc_codes jsonb,
     reasoning text,
     confidence_score decimal(3,2),
@@ -137,7 +137,7 @@ AS $$
     SELECT 
         qc.id,
         qc.user_query,
-        qc.hspcs_codes,
+        qc.hcpcs_codes,
         qc.rc_codes,
         qc.reasoning,
         qc.confidence_score,

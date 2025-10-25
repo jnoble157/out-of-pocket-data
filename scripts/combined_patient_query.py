@@ -350,16 +350,16 @@ class CombinedPatientQueryCLI:
                     print(f"📋 Using cached codes from: '{cached_result.original_query}'")
                     
                     # Use cached codes
-                    hspcs_codes = cached_result.hspcs_codes
+                    hcpcs_codes = cached_result.hcpcs_codes
                     rc_codes = cached_result.rc_codes
                     reasoning = cached_result.reasoning
                     confidence = cached_result.confidence_score
                     
                     # Display cached codes
                     print("\n🏥 Cached Medical Codes:")
-                    if hspcs_codes:
-                        print("   HSPCS Procedure Codes:")
-                        for code in hspcs_codes:
+                    if hcpcs_codes:
+                        print("   HCPCS Procedure Codes:")
+                        for code in hcpcs_codes:
                             print(f"   • {code}")
                     if rc_codes:
                         print("   RC Procedure Codes:")
@@ -387,12 +387,12 @@ class CombinedPatientQueryCLI:
                     return
                 
                 response = result.response
-                if not response.hspcs_codes and not response.rc_codes:
+                if not response.hcpcs_codes and not response.rc_codes:
                     print("⚠️  No codes found to search database with.")
                     return
                 
                 # Use fresh codes from Claude
-                hspcs_codes = response.hspcs_codes
+                hcpcs_codes = response.hcpcs_codes
                 rc_codes = response.rc_codes
                 reasoning = response.reasoning
                 confidence = response.confidence
@@ -402,7 +402,7 @@ class CombinedPatientQueryCLI:
                     print("💾 Storing high-confidence result in cache...")
                     self.cache_manager.store_cache(
                         query=user_input,
-                        hspcs_codes=hspcs_codes,
+                        hcpcs_codes=hcpcs_codes,
                         rc_codes=rc_codes,
                         reasoning=reasoning,
                         confidence=confidence
@@ -411,7 +411,7 @@ class CombinedPatientQueryCLI:
             # Step 3: Search Supabase with the codes (cached or fresh)
             print("\n🗄️  Step 3: Searching database with codes...")
             db_results = self.search_supabase_by_codes(
-                hcpcs_codes=hspcs_codes,
+                hcpcs_codes=hcpcs_codes,
                 rc_codes=rc_codes,
                 limit=20
             )

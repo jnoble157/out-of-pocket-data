@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class CachedResult:
     """Result from cache lookup."""
-    hspcs_codes: List[str]
+    hcpcs_codes: List[str]
     rc_codes: List[str]
     reasoning: str
     confidence_score: float
@@ -94,7 +94,7 @@ class QueryCacheManager:
             
             # Create cached result
             cached_result = CachedResult(
-                hspcs_codes=best_match.get('hspcs_codes', []),
+                hcpcs_codes=best_match.get('hcpcs_codes', []),
                 rc_codes=best_match.get('rc_codes', []),
                 reasoning=best_match.get('reasoning', ''),
                 confidence_score=float(best_match.get('confidence_score', 0.0)),
@@ -108,14 +108,14 @@ class QueryCacheManager:
             logger.error(f"Error checking cache: {e}")
             return None
     
-    def store_cache(self, query: str, hspcs_codes: List[str], rc_codes: List[str], 
+    def store_cache(self, query: str, hcpcs_codes: List[str], rc_codes: List[str], 
                    reasoning: str, confidence: float) -> bool:
         """
         Store query result in cache if confidence is high enough.
         
         Args:
             query: User query
-            hspcs_codes: HSPCS codes from Claude
+            hcpcs_codes: HCPCS codes from Claude
             rc_codes: RC codes from Claude
             reasoning: Reasoning from Claude
             confidence: Confidence score from Claude
@@ -139,7 +139,7 @@ class QueryCacheManager:
             # Prepare cache data
             cache_data = {
                 'user_query': query,
-                'hspcs_codes': hspcs_codes,
+                'hcpcs_codes': hcpcs_codes,
                 'rc_codes': rc_codes,
                 'reasoning': reasoning,
                 'confidence_score': confidence,
@@ -151,7 +151,7 @@ class QueryCacheManager:
             result = self.supabase.insert_cached_query(cache_data)
             
             if result:
-                logger.info(f"Successfully cached query with {len(hspcs_codes)} HSPCS and {len(rc_codes)} RC codes")
+                logger.info(f"Successfully cached query with {len(hcpcs_codes)} HCPCS and {len(rc_codes)} RC codes")
                 return True
             else:
                 logger.warning("Failed to store query in cache")
@@ -229,14 +229,14 @@ if __name__ == "__main__":
         
         if cached_result:
             print(f"Cache hit! Similarity: {cached_result.similarity_score:.3f}")
-            print(f"HSPCS codes: {cached_result.hspcs_codes}")
+            print(f"HCPCS codes: {cached_result.hcpcs_codes}")
             print(f"RC codes: {cached_result.rc_codes}")
         else:
             print("No cache hit found")
         
         # Test cache storage
         test_codes_data = {
-            'hspcs_codes': ['27447', '27448'],
+            'hcpcs_codes': ['27447', '27448'],
             'rc_codes': ['360'],
             'reasoning': 'Knee surgery procedures',
             'confidence': 0.95
@@ -244,7 +244,7 @@ if __name__ == "__main__":
         
         stored = cache_manager.store_cache(
             query=test_query,
-            hspcs_codes=test_codes_data['hspcs_codes'],
+            hcpcs_codes=test_codes_data['hcpcs_codes'],
             rc_codes=test_codes_data['rc_codes'],
             reasoning=test_codes_data['reasoning'],
             confidence=test_codes_data['confidence']
