@@ -1,6 +1,21 @@
 # Medical Pricing Data Processor
 
-Process hospital pricing data from CSV/JSON files or URLs. Output to database, JSON, or CSV with streaming and automatic format detection.
+Process hospital machine‑readable pricing files into clean JSON/CSV or straight into your database so you can quickly search and compare procedure costs by code or description.​
+Handles huge CSV/JSON with streaming, auto‑format detection, normalization, validation, and filtering to produce small, useful datasets you can actually work with.​
+
+## Find data sources
+* On a hospital’s site, search for “price transparency,” “standard charges,” “chargemaster,” or “machine‑readable file” and copy the CSV/JSON link.​
+
+* These links are often under Billing, Patient Financial Services, or Price Transparency pages; use the direct file URL with the CLI.​
+
+* Feed the file or URL into the tool: python -m src.cli process-file "<file_or_url>" --output-format json --output-dir ./output.​
+
+## Why it helps
+Tames multi‑GB files via streaming and worker parallelism so you don’t hit memory limits on real hospital datasets.​
+
+* Normalizes codes/descriptions and filters (e.g., outpatient, cash price) so downstream queries are consistent and fast.​
+
+* Exports JSON/CSV or writes to Supabase/Postgres so you can query by CPT/HCPCS/ICD, description, price range, or hospital—right away.​
 
 ## Quick Start
 
