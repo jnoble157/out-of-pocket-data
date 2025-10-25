@@ -21,6 +21,8 @@ CREATE TABLE IF NOT EXISTS medical_operations (
     id SERIAL PRIMARY KEY,
     facility_id VARCHAR(255) NOT NULL REFERENCES hospitals(facility_id) ON DELETE CASCADE,
     codes JSONB NOT NULL,
+    rc_code VARCHAR(50) DEFAULT NULL,
+    hcpcs_code VARCHAR(50) DEFAULT NULL,
     description TEXT NOT NULL,
     cash_price DECIMAL(10,2) NOT NULL CHECK (cash_price >= 0),
     gross_charge DECIMAL(10,2) NOT NULL CHECK (gross_charge >= 0),
@@ -40,6 +42,8 @@ CREATE INDEX IF NOT EXISTS idx_hospitals_state ON hospitals(state);
 CREATE INDEX IF NOT EXISTS idx_hospitals_city ON hospitals(city);
 CREATE INDEX IF NOT EXISTS idx_medical_operations_facility_id ON medical_operations(facility_id);
 CREATE INDEX IF NOT EXISTS idx_medical_operations_codes ON medical_operations USING GIN (codes);
+CREATE INDEX IF NOT EXISTS idx_medical_operations_rc_code ON medical_operations(rc_code);
+CREATE INDEX IF NOT EXISTS idx_medical_operations_hcpcs_code ON medical_operations(hcpcs_code);
 CREATE INDEX IF NOT EXISTS idx_medical_operations_description ON medical_operations(description);
 CREATE INDEX IF NOT EXISTS idx_medical_operations_cash_price ON medical_operations(cash_price);
 

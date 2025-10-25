@@ -3,7 +3,7 @@ Pydantic models for medical pricing data structures.
 Based on patterns from temp/pipelines for standardized data processing.
 """
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional
 from pydantic import BaseModel, Field, validator
 import re
 
@@ -39,6 +39,8 @@ class MedicalOperation(BaseModel):
     """Model for medical operation pricing data - matches PriceRecord from temp pipelines."""
     facility_id: str = Field(..., description="Foreign key to hospital")
     codes: Dict[str, List[str]] = Field(..., description="Medical codes (CPT, RC, etc.)")
+    rc_code: Optional[str] = Field(None, description="Primary revenue code")
+    hcpcs_code: Optional[str] = Field(None, description="Primary HCPCS/CPT code")
     description: str = Field(..., description="Description of the medical operation")
     cash_price: Optional[float] = Field(None, ge=0, description="Cash price for the operation")
     gross_charge: Optional[float] = Field(None, ge=0, description="Gross charge amount")
@@ -59,6 +61,13 @@ class MedicalOperation(BaseModel):
                 raise ValueError(f'All codes for {code_type} must be strings')
         return v
     
+    @validator('rc_code', 'hcpcs_code')
+    def validate_code_strings(cls, v):
+        """Ensure codes are strings or None."""
+        if v is not None and not isinstance(v, str):
+            raise ValueError('Codes must be strings or None')
+        return v
+    
     @validator('currency')
     def validate_currency(cls, v):
         """Ensure currency is a valid 3-letter code."""
@@ -72,6 +81,24 @@ class MedicalOperation(BaseModel):
         if 'negotiated_min' in values and 'negotiated_max' in values:
             if values['negotiated_min'] > values['negotiated_max']:
                 raise ValueError('negotiated_min cannot be greater than negotiated_max')
+        return v
+    
+    @validator('rc_code', pre=True, always=True)
+    def populate_rc_code(cls, v, values):
+        """Populate rc_code from the codes dictionary."""
+        if 'codes' in values:
+            codes_dict = values['codes']
+            if isinstance(codes_dict, dict) and 'RC' in codes_dict and codes_dict['RC']:
+                return codes_dict['RC'][0]  # Take the first RC code
+        return v
+    
+    @validator('hcpcs_code', pre=True, always=True)
+    def populate_hcpcs_code(cls, v, values):
+        """Populate hcpcs_code from the codes dictionary."""
+        if 'codes' in values:
+            codes_dict = values['codes']
+            if isinstance(codes_dict, dict) and 'HCPCS' in codes_dict and codes_dict['HCPCS']:
+                return codes_dict['HCPCS'][0]  # Take the first HCPCS code
         return v
 
 
@@ -118,6 +145,8 @@ class PriceRecord(BaseModel):
     """Price record - alias for MedicalOperation to match temp pipeline naming."""
     facility_id: str
     codes: Dict[str, List[str]]
+    rc_code: Optional[str] = Field(None, description="Primary revenue code")
+    hcpcs_code: Optional[str] = Field(None, description="Primary HCPCS/CPT code")
     description: str
     cash_price: Optional[float] = None
     gross_charge: Optional[float] = None
@@ -127,7 +156,7 @@ class PriceRecord(BaseModel):
     ingested_at: datetime = Field(default_factory=datetime.utcnow)
 
 
-def generate_facility_id(hospital_name: str, facility_number: str = None) -> str:
+def generate_facility_id(hospital_name: str, _facility_number: str = None) -> str:
     """
     Generate a standardized facility_id from hospital name.
     

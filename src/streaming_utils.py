@@ -280,7 +280,7 @@ def is_standardized_code_type(code_type: str) -> bool:
     """
     standardized_types = {
         'CPT',
-        'HCPCS',
+        'HCPCS',  # Healthcare Common Procedure Coding System
         'ICD-10',
         'ICD-10-CM',
         'ICD-10-PCS',

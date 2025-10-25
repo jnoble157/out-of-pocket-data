@@ -119,8 +119,9 @@ class CSVProcessor:
                     code_type_value = row.get(type_col, '').strip().upper()
                     if code_type_value:
                         # Normalize code types - only standardized codes
+                        # CPT codes are stored under HCPCS since CPT is a subset of HCPCS
                         type_mapping = {
-                            'CPT': 'CPT',
+                            'CPT': 'HCPCS',  # CPT codes stored under HCPCS
                             'HCPCS': 'HCPCS',
                             'RC': 'RC',
                             'REV': 'RC',  # Revenue Code alternative
@@ -216,6 +217,8 @@ class CSVProcessor:
                 operations_data.append({
                     'facility_id': op['facility_id'],
                     'codes': op['codes'],  # Supabase handles JSON automatically
+                    'rc_code': op.get('rc_code'),
+                    'hcpcs_code': op.get('hcpcs_code'),
                     'description': op['description'],
                     'cash_price': op['cash_price'],
                     'gross_charge': op['gross_charge'],

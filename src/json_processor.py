@@ -2,7 +2,6 @@
 JSON-specific data processing logic for medical pricing data.
 Handles JSON file parsing, data extraction, and normalization.
 """
-import json
 import logging
 from pathlib import Path
 from typing import Dict, Any, List, Optional
@@ -121,6 +120,10 @@ class JSONProcessor:
                 code_type = code_info.get("code_type", "unknown")
                 code_value = code_info.get("code")
 
+                # Normalize CPT codes to HCPCS since CPT is a subset of HCPCS
+                if code_type.upper() == 'CPT':
+                    code_type = 'HCPCS'
+
                 if code_type not in codes_dict:
                     codes_dict[code_type] = []
                 codes_dict[code_type].append(code_value)
@@ -229,6 +232,8 @@ class JSONProcessor:
                 operations_data.append({
                     'facility_id': op['facility_id'],
                     'codes': op['codes'],  # Supabase handles JSON automatically
+                    'rc_code': op.get('rc_code'),
+                    'hcpcs_code': op.get('hcpcs_code'),
                     'description': op['description'],
                     'cash_price': op['cash_price'],
                     'gross_charge': op['gross_charge'],
