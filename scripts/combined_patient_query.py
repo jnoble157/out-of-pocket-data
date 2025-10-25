@@ -128,12 +128,12 @@ class CombinedPatientQueryCLI:
         print("  • Mention insurance type if relevant")
         print("-" * 50)
     
-    def search_supabase_by_codes(self, hspcs_codes: List[str], rc_codes: List[str], limit: int = 20) -> List[Dict[str, Any]]:
+    def search_supabase_by_codes(self, hcpcs_codes: List[str], rc_codes: List[str], limit: int = 20) -> List[Dict[str, Any]]:
         """
         Search Supabase database using the codes returned by Claude.
         
         Args:
-            hspcs_codes: HSPCS codes from Claude
+            hcpcs_codes: HCPCS codes from Claude
             rc_codes: RC codes from Claude  
             limit: Maximum number of results
             
@@ -141,9 +141,9 @@ class CombinedPatientQueryCLI:
             List of matching medical operations
         """
         try:
-            print(f"🗄️  Searching database with {len(hspcs_codes)} HSPCS and {len(rc_codes)} RC codes...")
+            print(f"🗄️  Searching database with {len(hcpcs_codes)} HCPCS and {len(rc_codes)} RC codes...")
             
-            if not hspcs_codes and not rc_codes:
+            if not hcpcs_codes and not rc_codes:
                 print("⚠️  No codes provided for database search")
                 return []
             
@@ -154,11 +154,11 @@ class CombinedPatientQueryCLI:
             
             # Build OR conditions for code matching
             # Use Supabase's or_() method with proper syntax
-            if hspcs_codes or rc_codes:
+            if hcpcs_codes or rc_codes:
                 all_filters = []
                 
                 # Add HCPCS code filters
-                for code in hspcs_codes:
+                for code in hcpcs_codes:
                     all_filters.append(f'hcpcs_code.eq.{code}')
                 
                 # Add RC code filters
@@ -184,8 +184,8 @@ class CombinedPatientQueryCLI:
                 non_rc_matches = 0
                 
                 # Check HCPCS matches
-                if hspcs_codes and record.get('hcpcs_code'):
-                    if record['hcpcs_code'] in hspcs_codes:
+                if hcpcs_codes and record.get('hcpcs_code'):
+                    if record['hcpcs_code'] in hcpcs_codes:
                         match_count += 1
                         non_rc_matches += 1
                 
@@ -230,9 +230,9 @@ class CombinedPatientQueryCLI:
         output.append("")
         
         # Medical codes
-        if response.hspcs_codes:
-            output.append("🏥 HSPCS Procedure Codes:")
-            for code in response.hspcs_codes:
+        if response.hcpcs_codes:
+            output.append("🏥 HCPCS Procedure Codes:")
+            for code in response.hcpcs_codes:
                 output.append(f"   • {code}")
             output.append("")
         

@@ -77,7 +77,7 @@ class ClaudeProvider(ModelProvider):
             # Parse JSON response
             result = self._parse_claude_response(response_text)
             
-            logger.info(f"Successfully parsed Claude response with {len(result.get('hspcs_codes', []))} HSPCS codes and {len(result.get('rc_codes', []))} RC codes")
+            logger.info(f"Successfully parsed Claude response with {len(result.get('hcpcs_codes', []))} HCPCS codes and {len(result.get('rc_codes', []))} RC codes")
             
             return result
             
@@ -157,7 +157,7 @@ class ClaudeProvider(ModelProvider):
         """
         # Ensure required fields exist with defaults
         validated_result = {
-            "hspcs_codes": result.get("hspcs_codes", []),
+            "hcpcs_codes": result.get("hcpcs_codes", []),
             "rc_codes": result.get("rc_codes", []),
             "overall_confidence": result.get("overall_confidence", 0.5),
             "reasoning": result.get("reasoning", ""),
@@ -166,8 +166,8 @@ class ClaudeProvider(ModelProvider):
         }
         
         # Ensure codes are lists
-        if not isinstance(validated_result["hspcs_codes"], list):
-            validated_result["hspcs_codes"] = []
+        if not isinstance(validated_result["hcpcs_codes"], list):
+            validated_result["hcpcs_codes"] = []
         if not isinstance(validated_result["rc_codes"], list):
             validated_result["rc_codes"] = []
         
@@ -193,7 +193,7 @@ class ClaudeProvider(ModelProvider):
         logger.warning("Creating fallback response due to parsing failure")
         
         # Try to extract some information from the text
-        hspcs_codes = []
+        hcpcs_codes = []
         rc_codes = []
         
         # Look for common patterns in the response
@@ -207,10 +207,10 @@ class ClaudeProvider(ModelProvider):
                     if len(line) >= 3:
                         if line[0].isupper() and line[1:3].isdigit():
                             # Could be any type of medical code
-                            hspcs_codes.append(line[:3])
+                            hcpcs_codes.append(line[:3])
         
         return {
-            "hspcs_codes": hspcs_codes,
+            "hcpcs_codes": hcpcs_codes,
             "rc_codes": rc_codes,
             "overall_confidence": 0.3,  # Low confidence due to parsing failure
             "reasoning": f"Could not parse Claude's response properly. Raw response: {response_text[:200]}...",

@@ -125,9 +125,9 @@ class PatientQueryCLI:
         output.append("")
         
         # Medical codes
-        if response.hspcs_codes:
-            output.append("🏥 HSPCS Procedure Codes:")
-            for code in response.hspcs_codes:
+        if response.hcpcs_codes:
+            output.append("🏥 HCPCS Procedure Codes:")
+            for code in response.hcpcs_codes:
                 output.append(f"   • {code}")
             output.append("")
         
