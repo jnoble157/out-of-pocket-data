@@ -78,29 +78,78 @@ def init_db(supabase_url, supabase_key):
 
 
 @cli.command()
-@click.argument('file_path', type=click.Path(exists=True))
+@click.argument('file_path_or_url')
 @click.option('--batch-size', default=1000, help='Batch size for processing')
 @click.option('--max-workers', default=4, help='Maximum number of worker threads')
 @click.option('--hospital-metadata', help='JSON string with hospital metadata')
-def process_file(file_path, batch_size, max_workers, hospital_metadata):
-    """Process a single CSV or JSON file."""
+@click.option('--output-format', type=click.Choice(['database', 'json', 'csv']), default='database',
+              help='Output format: database, json, or csv')
+@click.option('--output-dir', type=click.Path(), default='./output',
+              help='Output directory for json/csv formats')
+@click.option('--include-inpatient', is_flag=True, default=False,
+              help='Include inpatient records (default: outpatient only)')
+@click.option('--allow-missing-price', is_flag=True, default=False,
+              help='Allow records without cash price (default: require cash price)')
+@click.option('--max-download-size', default=5000, help='Maximum download size in MB (default: 5000)')
+def process_file(file_path_or_url, batch_size, max_workers, hospital_metadata, output_format, output_dir,
+                 include_inpatient, allow_missing_price, max_download_size):
+    """Process a single CSV or JSON file from local path or URL."""
     async def _process():
+        temp_file_path = None
         try:
-            # Initialize Supabase client instead of direct database connection
-            supabase_manager.initialize()
-            
+            # Check if input is URL or file path
+            from pathlib import Path
+            from .downloader import is_url, download_file, cleanup_temp_file, DownloadError
+
+            if is_url(file_path_or_url):
+                click.echo(f"📥 Downloading from URL: {file_path_or_url}")
+                try:
+                    temp_file_path = download_file(file_path_or_url, max_size_mb=max_download_size)
+                    file_path = str(temp_file_path)
+                    click.echo(f"✅ Download complete: {temp_file_path}")
+                except DownloadError as e:
+                    click.echo(f"❌ Download failed: {e}", err=True)
+                    sys.exit(1)
+            else:
+                # Local file path
+                file_path = file_path_or_url
+                # Validate file exists
+                if not Path(file_path).exists():
+                    click.echo(f"❌ File not found: {file_path}", err=True)
+                    sys.exit(1)
+
             # Parse hospital metadata if provided
             metadata = None
             if hospital_metadata:
                 import json
                 metadata = json.loads(hospital_metadata)
-            
-            # Create processor
-            processor = DataProcessor(batch_size=batch_size, max_workers=max_workers)
-            
+
+            # Create output writer based on format
+            from .output_writer import DatabaseWriter, JSONWriter, CSVWriter
+
+            if output_format == 'database':
+                # Initialize Supabase client for database output
+                supabase_manager.initialize()
+                writer = DatabaseWriter()
+            elif output_format == 'json':
+                writer = JSONWriter(Path(output_dir))
+            elif output_format == 'csv':
+                writer = CSVWriter(Path(output_dir))
+            else:
+                raise ValueError(f"Unknown output format: {output_format}")
+
+            # Create processor with writer and filter options
+            processor = DataProcessor(
+                batch_size=batch_size,
+                max_workers=max_workers,
+                output_writer=writer,
+                filter_outpatient_only=not include_inpatient,
+                require_cash_price=not allow_missing_price
+            )
+
             # Process file
             result = await processor.process_file(file_path, metadata)
-            
+
             # Display results
             click.echo(f"📊 Processing Results:")
             click.echo(f"  Facility ID: {result.facility_id}")
@@ -108,19 +157,24 @@ def process_file(file_path, batch_size, max_workers, hospital_metadata):
             click.echo(f"  Successful: {result.successful_records}")
             click.echo(f"  Failed: {result.failed_records}")
             click.echo(f"  Processing Time: {result.processing_time:.2f}s")
-            
+
             if result.errors:
                 click.echo(f"  Errors: {len(result.errors)}")
                 for error in result.errors[:5]:  # Show first 5 errors
                     click.echo(f"    - {error}")
                 if len(result.errors) > 5:
                     click.echo(f"    ... and {len(result.errors) - 5} more errors")
-            
+
             processor.close()
-            
+
         except Exception as e:
             click.echo(f"❌ Processing failed: {e}", err=True)
             sys.exit(1)
+        finally:
+            # Clean up temporary file if downloaded
+            if temp_file_path:
+                from .downloader import cleanup_temp_file
+                cleanup_temp_file(temp_file_path)
     
     asyncio.run(_process())
 
@@ -130,16 +184,32 @@ def process_file(file_path, batch_size, max_workers, hospital_metadata):
 @click.option('--pattern', default='*.csv', help='File pattern to match')
 @click.option('--batch-size', default=1000, help='Batch size for processing')
 @click.option('--max-workers', default=4, help='Maximum number of worker threads')
-def process_directory(directory_path, pattern, batch_size, max_workers):
+@click.option('--output-format', type=click.Choice(['database', 'json', 'csv']), default='database',
+              help='Output format: database, json, or csv')
+@click.option('--output-dir', type=click.Path(), default='./output',
+              help='Output directory for json/csv formats')
+def process_directory(directory_path, pattern, batch_size, max_workers, output_format, output_dir):
     """Process all files in a directory matching the pattern."""
     async def _process():
         try:
-            # Initialize Supabase client instead of direct database connection
-            supabase_manager.initialize()
-            
-            # Create processor
-            processor = DataProcessor(batch_size=batch_size, max_workers=max_workers)
-            
+            # Create output writer based on format
+            from pathlib import Path
+            from .output_writer import DatabaseWriter, JSONWriter, CSVWriter
+
+            if output_format == 'database':
+                # Initialize Supabase client for database output
+                supabase_manager.initialize()
+                writer = DatabaseWriter()
+            elif output_format == 'json':
+                writer = JSONWriter(Path(output_dir))
+            elif output_format == 'csv':
+                writer = CSVWriter(Path(output_dir))
+            else:
+                raise ValueError(f"Unknown output format: {output_format}")
+
+            # Create processor with writer
+            processor = DataProcessor(batch_size=batch_size, max_workers=max_workers, output_writer=writer)
+
             # Process directory
             results = await processor.process_directory(directory_path, pattern)
             

@@ -22,19 +22,32 @@ from .streaming_utils import (
 from .format_detector import detect_file_format, is_supported_format, get_file_info
 from .csv_processor import CSVProcessor
 from .json_processor import JSONProcessor
+from .output_writer import OutputWriter
 
 logger = logging.getLogger(__name__)
 
 
 class DataProcessor:
     """Main data processing class for medical pricing data."""
-    
-    def __init__(self, batch_size: int = 1000, max_workers: int = 4):
+
+    def __init__(self, batch_size: int = 1000, max_workers: int = 4, output_writer: Optional[OutputWriter] = None,
+                 filter_outpatient_only: bool = True, require_cash_price: bool = True):
         self.batch_size = batch_size
         self.max_workers = max_workers
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
-        self.csv_processor = CSVProcessor(batch_size=batch_size)
-        self.json_processor = JSONProcessor(batch_size=batch_size)
+        self.writer = output_writer
+        self.csv_processor = CSVProcessor(
+            batch_size=batch_size,
+            output_writer=output_writer,
+            filter_outpatient_only=filter_outpatient_only,
+            require_cash_price=require_cash_price
+        )
+        self.json_processor = JSONProcessor(
+            batch_size=batch_size,
+            output_writer=output_writer,
+            filter_outpatient_only=filter_outpatient_only,
+            require_cash_price=require_cash_price
+        )
     
     async def process_file(self, file_path: Union[str, Path], 
                           hospital_metadata: Optional[Dict[str, Any]] = None) -> DataIngestionResult:
@@ -340,18 +353,11 @@ class DataProcessor:
         return mapped
     
     async def _create_hospital_record(self, metadata: Dict[str, Any]) -> Hospital:
-        """Create or update hospital record in database."""
+        """Create or update hospital record using the configured output writer."""
         try:
             hospital = Hospital(**metadata)
-            
-            # Use Supabase client for data insertion
-            from .database import supabase_manager
-            
-            # Initialize Supabase if not already done
-            if not supabase_manager.client:
-                supabase_manager.initialize()
-            
-            # Prepare hospital data for Supabase
+
+            # Prepare hospital data
             hospital_data = {
                 'facility_id': hospital.facility_id,
                 'facility_name': hospital.facility_name,
@@ -363,13 +369,16 @@ class DataProcessor:
                 'last_updated': hospital.last_updated,
                 'ingested_at': hospital.ingested_at.isoformat()
             }
-            
-            # Insert using Supabase client (handles upserts automatically)
-            supabase_manager.insert_hospital(hospital_data)
-            
-            logger.info(f"Created/updated hospital record: {hospital.facility_id}")
+
+            # Write using output writer
+            if self.writer:
+                self.writer.write_hospital(hospital_data)
+                logger.info(f"Wrote hospital record: {hospital.facility_id}")
+            else:
+                logger.warning("No output writer configured, skipping hospital write")
+
             return hospital
-            
+
         except Exception as e:
             logger.error(f"Failed to create hospital record: {e}")
             raise
@@ -414,6 +423,8 @@ class DataProcessor:
     
     def close(self):
         """Close the processor and cleanup resources."""
+        if self.writer:
+            self.writer.close()
         if self.executor:
             self.executor.shutdown(wait=True)
             logger.info("Data processor closed")

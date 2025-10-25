@@ -75,3 +75,4 @@ dmypy.json
 
 # pyenv
 .python-version
+output/

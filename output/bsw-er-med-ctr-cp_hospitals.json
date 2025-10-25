@@ -1,0 +1,13 @@
+[
+  {
+    "facility_id": "bsw-er-med-ctr-cp",
+    "facility_name": "Baylor Scott  White Emergency Medical Center  Cedar Park",
+    "city": "900 East Whitestone Boulevard",
+    "state": "TX",
+    "address": "900 East Whitestone Boulevard, Cedar Park, TX 78613",
+    "source_url": "/Users/alexhurley/Develop/out-of-pocket-data/examples/raw/203749695_baylor-scott--white-emergency-medical-center--cedar-park_standardcharges.csv",
+    "file_version": "2.0.0",
+    "last_updated": "2025-07-23",
+    "ingested_at": "2025-10-25T22:03:48.212877"
+  }
+]

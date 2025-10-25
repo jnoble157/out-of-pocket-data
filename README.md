@@ -1,97 +1,102 @@
 # Medical Pricing Data Processor
 
-Process hospital pricing data from CSV/JSON files into PostgreSQL. Handles large files efficiently with streaming and automatic format detection.
+Process hospital pricing data from CSV/JSON files or URLs. Output to database, JSON, or CSV with streaming and automatic format detection.
 
 ## Quick Start
 
-1. **Install:**
-   ```bash
-   ./install.sh
-   ```
+```bash
+# Install
+./install.sh
 
-2. **Setup database:**
-   ```bash
-   # Edit .env with your database URL
-   python main.py init-db
-   ```
+# Process from local file or URL
+python -m src.cli process-file data/hospital.csv --output-format json --output-dir ./output
+python -m src.cli process-file "https://example.com/data.csv" --output-format json --output-dir ./output
 
-3. **Process data:**
-   ```bash
-   python main.py process-file data/hospital_data.csv
-   ```
+# Process to database (requires .env setup)
+python -m src.cli process-file data/hospital.csv --output-format database
+```
 
 ## Configuration
 
-Create `.env` file:
+Create `.env` file (only for database output):
 ```env
-DATABASE_URL=postgresql://user:pass@localhost:5432/medical_pricing
-LOG_LEVEL=INFO
-BATCH_SIZE=1000
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your-api-key
 ```
 
 ## Usage
 
-### Process Files
+### Basic Commands
+
 ```bash
-# Single file
-python main.py process-file data/hospital.csv
+# Process single file
+python -m src.cli process-file <file_or_url> --output-format <json|csv|database> --output-dir ./output
 
-# Directory of files
-python main.py process-directory data/ --pattern "*.csv"
+# Process directory
+python -m src.cli process-directory data/ --output-format json --output-dir ./output
 
-# With custom settings
-python main.py process-file data/large_file.csv --batch-size 2000 --max-workers 8
+# Query database
+python -m src.cli query-hospitals --state TX --limit 10
+python -m src.cli query-operations --description "MRI" --min-price 500
 ```
 
-### Query Data
+### Common Options
+
 ```bash
-# List hospitals
-python main.py query-hospitals --state TX --limit 5
+--output-format <database|json|csv>   # Output format (default: database)
+--output-dir <path>                   # Output directory for json/csv
+--include-inpatient                   # Include inpatient records (default: outpatient only)
+--allow-missing-price                 # Allow records without cash price
+--batch-size <n>                      # Batch size (default: 1000)
+--max-workers <n>                     # Worker threads (default: 4)
+--max-download-size <mb>              # Download limit in MB (default: 5000)
+```
 
-# Search operations
-python main.py query-operations --description "MRI" --min-price 500 --max-price 2000
+### Examples
 
-# Test connection
-python main.py test-connection
+```bash
+# Process from URL with all records
+python -m src.cli process-file "https://example.com/data.csv" \
+  --output-format json \
+  --include-inpatient \
+  --allow-missing-price
+
+# Large file optimization
+python -m src.cli process-file large.csv \
+  --batch-size 5000 \
+  --max-workers 12 \
+  --output-format csv
+
+# Process directory of JSON files
+python -m src.cli process-directory data/ \
+  --pattern "*.json" \
+  --output-format csv \
+  --output-dir ./results
 ```
 
 ## Features
 
-- **Auto-format detection**: CSV, JSON, NDJSON
-- **Smart column mapping**: Handles varying hospital formats
-- **Streaming processing**: Large files without memory issues
-- **Data validation**: Only standardized medical codes (CPT, HCPCS, ICD-10, RC)
-- **Deduplication**: Removes duplicate records
-- **Batch processing**: Configurable for performance
+- **URL download**: Process files from HTTPS URLs (auto-download, up to 5GB)
+- **Multiple outputs**: Database (Supabase), JSON, or CSV
+- **Smart parsing**: Auto-detects CSV/JSON/NDJSON, handles varying hospital formats
+- **Streaming**: Process large files (GB+) without memory issues
+- **Filtering**: Optional outpatient-only and cash-price filters
+- **Validation**: Standardized medical codes only (CPT, HCPCS, ICD-10, RC)
+- **Deduplication**: Removes duplicate records intelligently
 
-## Database Schema
+## Output Format
 
-**Hospitals:**
-- `facility_id`, `facility_name`, `city`, `state`, `address`
-- `source_url`, `file_version`, `last_updated`
+**JSON/CSV Output:**
+- `{facility_id}_hospitals.json/csv` - Hospital metadata
+- `{facility_id}_operations.json/csv` - Medical operations
 
-**Medical Operations:**
-- `facility_id`, `codes` (JSONB), `description`
-- `cash_price`, `gross_charge`, `negotiated_min/max`
-- `currency`, `ingested_at`
+**Database Output:**
+- `hospitals` table: facility info, location, metadata
+- `medical_operations` table: codes, prices, descriptions
 
 ## Troubleshooting
 
-**Database connection failed:**
-```bash
-# Start PostgreSQL
-brew services start postgresql  # macOS
-sudo systemctl start postgresql  # Linux
-```
-
-**Large files:**
-```bash
-# Increase batch size and workers
-python main.py process-file large_file.csv --batch-size 5000 --max-workers 12
-```
-
-**Memory issues:**
-```bash
-# Reduce batch size
-python main.py process-file large_file.csv --batch-size 500 --max-workers 2
-```
+**Slow processing:** Increase `--batch-size 5000 --max-workers 12`
+**Memory issues:** Reduce `--batch-size 500 --max-workers 2`
+**Download timeout:** Increase `--max-download-size` or use local file
+**Database failed:** Use `--output-format json` to process without database

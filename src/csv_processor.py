@@ -11,15 +11,20 @@ from .streaming_utils import (
     stream_csv_rows, detect_metadata_rows, safe_decimal, is_standardized_code_type
 )
 from .column_mapper import CSVColumnMapper
+from .output_writer import OutputWriter
 
 logger = logging.getLogger(__name__)
 
 
 class CSVProcessor:
     """CSV-specific data processing class."""
-    
-    def __init__(self, batch_size: int = 1000):
+
+    def __init__(self, batch_size: int = 1000, output_writer: Optional[OutputWriter] = None,
+                 filter_outpatient_only: bool = True, require_cash_price: bool = True):
         self.batch_size = batch_size
+        self.writer = output_writer
+        self.filter_outpatient_only = filter_outpatient_only
+        self.require_cash_price = require_cash_price
     
     async def process_csv_file(self, file_path: Path, facility_id: str) -> Dict[str, Any]:
         """Process CSV file using advanced streaming patterns with deduplication."""
@@ -160,24 +165,28 @@ class CSVProcessor:
             if mapping.max_negotiated:
                 negotiated_max = safe_decimal(row.get(mapping.max_negotiated))
             
-            # Require a positive cash price
-            if not cash_price:
+            # Optionally require a positive cash price
+            if self.require_cash_price and not cash_price:
                 return None
-            
+
+            # If cash price not required, default to 0.0 if missing
+            if not cash_price:
+                cash_price = 0.0
+
             # Extract description
             description = 'Unknown'
             if mapping.description:
                 desc_value = row.get(mapping.description, '').strip()
                 if desc_value:
                     description = desc_value
-            
+
             # Extract setting
             setting = None
             if mapping.setting:
                 setting = row.get(mapping.setting, '').strip().lower()
-            
-            # Filter: only process outpatient records
-            if setting and setting != 'outpatient':
+
+            # Optionally filter: only process outpatient records
+            if self.filter_outpatient_only and setting and setting != 'outpatient':
                 return None
             
             # Build price record
@@ -200,23 +209,21 @@ class CSVProcessor:
             return None
     
     async def _batch_insert_operations(self, operations: List[Dict[str, Any]]):
-        """Insert a batch of medical operations into the database."""
+        """Write a batch of medical operations using the configured output writer."""
         if not operations:
             return
-        
+
+        if not self.writer:
+            logger.warning("No output writer configured, skipping write")
+            return
+
         try:
-            from .database import supabase_manager
-            
-            # Initialize Supabase if not already done
-            if not supabase_manager.client:
-                supabase_manager.initialize()
-            
-            # Prepare operations data for Supabase
+            # Prepare operations data
             operations_data = []
             for op in operations:
                 operations_data.append({
                     'facility_id': op['facility_id'],
-                    'codes': op['codes'],  # Supabase handles JSON automatically
+                    'codes': op['codes'],
                     'rc_code': op.get('rc_code'),
                     'hcpcs_code': op.get('hcpcs_code'),
                     'description': op['description'],
@@ -227,14 +234,14 @@ class CSVProcessor:
                     'currency': op['currency'],
                     'ingested_at': op['ingested_at'].isoformat()
                 })
-            
-            # Insert using Supabase client
-            supabase_manager.batch_insert_medical_operations(operations_data)
-            
-            logger.info("Inserted %d medical operations", len(operations))
-                    
+
+            # Write using output writer
+            self.writer.write_operations(operations_data)
+
+            logger.info("Wrote %d medical operations", len(operations))
+
         except Exception as e:
-            logger.error("Failed to batch insert operations: %s", e)
+            logger.error("Failed to write operations: %s", e)
             raise
     
     def _deduplicate_operations(self, operations: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

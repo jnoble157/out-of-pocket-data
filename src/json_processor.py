@@ -10,15 +10,20 @@ from .models import MedicalOperation
 from .streaming_utils import (
     stream_json_array, is_standardized_code_type
 )
+from .output_writer import OutputWriter
 
 logger = logging.getLogger(__name__)
 
 
 class JSONProcessor:
     """JSON-specific data processing class."""
-    
-    def __init__(self, batch_size: int = 1000):
+
+    def __init__(self, batch_size: int = 1000, output_writer: Optional[OutputWriter] = None,
+                 filter_outpatient_only: bool = True, require_cash_price: bool = True):
         self.batch_size = batch_size
+        self.writer = output_writer
+        self.filter_outpatient_only = filter_outpatient_only
+        self.require_cash_price = require_cash_price
     
     async def process_json_file(self, file_path: Path, facility_id: str) -> Dict[str, Any]:
         """Process JSON file using advanced streaming patterns."""
@@ -97,18 +102,22 @@ class JSONProcessor:
             if not isinstance(item, dict):
                 return operations
             
-            # Filter: only process outpatient records
+            # Optionally filter: only process outpatient records
             setting = self._extract_setting_from_item(item)
-            if setting and setting != 'outpatient':
+            if self.filter_outpatient_only and setting and setting != 'outpatient':
                 return operations
-                
+
             description = item.get("description", "")
             prices = self._extract_prices_from_item(item)
 
-            # Require a positive cash price
+            # Optionally require a positive cash price
             cash_price = prices.get("cash_price")
-            if cash_price is None or cash_price <= 0:
+            if self.require_cash_price and (cash_price is None or cash_price <= 0):
                 return operations
+
+            # If cash price not required, default to 0.0 if missing
+            if cash_price is None or cash_price <= 0:
+                prices["cash_price"] = 0.0
             
             # Extract all codes and group by type
             codes_dict = {}
@@ -215,23 +224,21 @@ class JSONProcessor:
         return None
     
     async def _batch_insert_operations(self, operations: List[Dict[str, Any]]):
-        """Insert a batch of medical operations into the database."""
+        """Write a batch of medical operations using the configured output writer."""
         if not operations:
             return
-        
+
+        if not self.writer:
+            logger.warning("No output writer configured, skipping write")
+            return
+
         try:
-            from .database import supabase_manager
-            
-            # Initialize Supabase if not already done
-            if not supabase_manager.client:
-                supabase_manager.initialize()
-            
-            # Prepare operations data for Supabase
+            # Prepare operations data
             operations_data = []
             for op in operations:
                 operations_data.append({
                     'facility_id': op['facility_id'],
-                    'codes': op['codes'],  # Supabase handles JSON automatically
+                    'codes': op['codes'],
                     'rc_code': op.get('rc_code'),
                     'hcpcs_code': op.get('hcpcs_code'),
                     'description': op['description'],
@@ -242,12 +249,12 @@ class JSONProcessor:
                     'currency': op['currency'],
                     'ingested_at': op['ingested_at'].isoformat()
                 })
-            
-            # Insert using Supabase client
-            supabase_manager.batch_insert_medical_operations(operations_data)
-            
-            logger.info(f"Inserted {len(operations)} medical operations")
-                    
+
+            # Write using output writer
+            self.writer.write_operations(operations_data)
+
+            logger.info(f"Wrote {len(operations)} medical operations")
+
         except Exception as e:
-            logger.error(f"Failed to batch insert operations: {e}")
+            logger.error(f"Failed to write operations: {e}")
             raise
