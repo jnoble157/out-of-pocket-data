@@ -13,7 +13,7 @@ from sqlalchemy.orm import sessionmaker
 from dotenv import load_dotenv
 
 # Load environment variables
-load_dotenv()
+load_dotenv('.supabase.env')
 
 logger = logging.getLogger(__name__)
 

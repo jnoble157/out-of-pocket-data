@@ -13,7 +13,7 @@ from .database import db_manager, supabase_manager
 from .processor import DataProcessor
 
 # Load environment variables
-load_dotenv()
+load_dotenv('.supabase.env')
 
 # Configure logging
 logging.basicConfig(
@@ -86,8 +86,8 @@ def process_file(file_path, batch_size, max_workers, hospital_metadata):
     """Process a single CSV or JSON file."""
     async def _process():
         try:
-            # Initialize database
-            db_manager.initialize()
+            # Initialize Supabase client instead of direct database connection
+            supabase_manager.initialize()
             
             # Parse hospital metadata if provided
             metadata = None
@@ -121,8 +121,6 @@ def process_file(file_path, batch_size, max_workers, hospital_metadata):
         except Exception as e:
             click.echo(f"❌ Processing failed: {e}", err=True)
             sys.exit(1)
-        finally:
-            db_manager.close()
     
     asyncio.run(_process())
 
@@ -136,8 +134,8 @@ def process_directory(directory_path, pattern, batch_size, max_workers):
     """Process all files in a directory matching the pattern."""
     async def _process():
         try:
-            # Initialize database
-            db_manager.initialize()
+            # Initialize Supabase client instead of direct database connection
+            supabase_manager.initialize()
             
             # Create processor
             processor = DataProcessor(batch_size=batch_size, max_workers=max_workers)
@@ -167,8 +165,6 @@ def process_directory(directory_path, pattern, batch_size, max_workers):
         except Exception as e:
             click.echo(f"❌ Directory processing failed: {e}", err=True)
             sys.exit(1)
-        finally:
-            db_manager.close()
     
     asyncio.run(_process())
 
@@ -180,46 +176,37 @@ def process_directory(directory_path, pattern, batch_size, max_workers):
 def query_hospitals(facility_id, state, limit):
     """Query hospitals in the database."""
     try:
-        db_manager.initialize()
+        # Initialize Supabase client instead of direct database connection
+        supabase_manager.initialize()
         
-        with db_manager.get_connection() as conn:
-            with conn.cursor() as cursor:
-                query = "SELECT facility_id, facility_name, city, state, last_updated FROM hospitals"
-                params = []
-                
-                conditions = []
-                if facility_id:
-                    conditions.append("facility_id = %s")
-                    params.append(facility_id)
-                if state:
-                    conditions.append("state = %s")
-                    params.append(state)
-                
-                if conditions:
-                    query += " WHERE " + " AND ".join(conditions)
-                
-                query += f" ORDER BY ingested_at DESC LIMIT %s"
-                params.append(limit)
-                
-                cursor.execute(query, params)
-                results = cursor.fetchall()
-                
-                if not results:
-                    click.echo("No hospitals found")
-                    return
-                
-                click.echo(f"🏥 Hospitals ({len(results)} results):")
-                for row in results:
-                    click.echo(f"  {row['facility_id']} - {row['facility_name']}")
-                    click.echo(f"    📍 {row['city']}, {row['state']}")
-                    click.echo(f"    📅 Last Updated: {row['last_updated']}")
-                    click.echo()
+        # Build query
+        query = supabase_manager.client.table('hospitals').select('*')
+        
+        if facility_id:
+            query = query.eq('facility_id', facility_id)
+        if state:
+            query = query.eq('state', state)
+        
+        # Order by ingested_at descending and limit results
+        query = query.order('ingested_at', desc=True).limit(limit)
+        
+        # Execute query
+        result = query.execute()
+        
+        if not result.data:
+            click.echo("No hospitals found")
+            return
+        
+        click.echo(f"🏥 Hospitals ({len(result.data)} results):")
+        for row in result.data:
+            click.echo(f"  {row['facility_id']} - {row['facility_name']}")
+            click.echo(f"    📍 {row['city']}, {row['state']}")
+            click.echo(f"    📅 Last Updated: {row['last_updated']}")
+            click.echo()
         
     except Exception as e:
         click.echo(f"❌ Query failed: {e}", err=True)
         sys.exit(1)
-    finally:
-        db_manager.close()
 
 
 @cli.command()
@@ -231,97 +218,77 @@ def query_hospitals(facility_id, state, limit):
 def query_operations(facility_id, min_price, max_price, description, limit):
     """Query medical operations in the database."""
     try:
-        db_manager.initialize()
+        # Initialize Supabase client instead of direct database connection
+        supabase_manager.initialize()
         
-        with db_manager.get_connection() as conn:
-            with conn.cursor() as cursor:
-                query = """
-                    SELECT mo.facility_id, h.facility_name, mo.description, 
-                           mo.cash_price, mo.gross_charge, mo.negotiated_min, mo.negotiated_max,
-                           mo.codes
-                    FROM medical_operations mo
-                    JOIN hospitals h ON mo.facility_id = h.facility_id
-                """
-                params = []
-                conditions = []
-                
-                if facility_id:
-                    conditions.append("mo.facility_id = %s")
-                    params.append(facility_id)
-                if min_price is not None:
-                    conditions.append("mo.cash_price >= %s")
-                    params.append(min_price)
-                if max_price is not None:
-                    conditions.append("mo.cash_price <= %s")
-                    params.append(max_price)
-                if description:
-                    conditions.append("mo.description ILIKE %s")
-                    params.append(f"%{description}%")
-                
-                if conditions:
-                    query += " WHERE " + " AND ".join(conditions)
-                
-                query += " ORDER BY mo.cash_price DESC LIMIT %s"
-                params.append(limit)
-                
-                cursor.execute(query, params)
-                results = cursor.fetchall()
-                
-                if not results:
-                    click.echo("No operations found")
-                    return
-                
-                click.echo(f"🏥 Medical Operations ({len(results)} results):")
-                for row in results:
-                    click.echo(f"  {row['description']}")
-                    click.echo(f"    🏥 {row['facility_name']} ({row['facility_id']})")
-                    
-                    # Handle None values for prices
-                    cash_price = f"${row['cash_price']:.2f}" if row['cash_price'] is not None else "N/A"
-                    gross_charge = f"${row['gross_charge']:.2f}" if row['gross_charge'] is not None else "N/A"
-                    click.echo(f"    💰 Cash: {cash_price} | Gross: {gross_charge}")
-                    
-                    # Handle None values for negotiated prices
-                    if row['negotiated_min'] is not None and row['negotiated_max'] is not None:
-                        negotiated = f"${row['negotiated_min']:.2f} - ${row['negotiated_max']:.2f}"
-                    elif row['negotiated_min'] is not None:
-                        negotiated = f"${row['negotiated_min']:.2f} - N/A"
-                    elif row['negotiated_max'] is not None:
-                        negotiated = f"N/A - ${row['negotiated_max']:.2f}"
-                    else:
-                        negotiated = "N/A - N/A"
-                    click.echo(f"    📊 Negotiated: {negotiated}")
-                    click.echo(f"    🏷️  Codes: {row['codes']}")
-                    click.echo()
+        # Build query with join to hospitals table
+        query = supabase_manager.client.table('medical_operations').select(
+            'facility_id, description, cash_price, gross_charge, negotiated_min, negotiated_max, codes, hospitals!inner(facility_name)'
+        )
+        
+        if facility_id:
+            query = query.eq('facility_id', facility_id)
+        if min_price is not None:
+            query = query.gte('cash_price', min_price)
+        if max_price is not None:
+            query = query.lte('cash_price', max_price)
+        if description:
+            query = query.ilike('description', f'%{description}%')
+        
+        # Order by cash_price descending and limit results
+        query = query.order('cash_price', desc=True).limit(limit)
+        
+        # Execute query
+        result = query.execute()
+        
+        if not result.data:
+            click.echo("No operations found")
+            return
+        
+        click.echo(f"🏥 Medical Operations ({len(result.data)} results):")
+        for row in result.data:
+            click.echo(f"  {row['description']}")
+            click.echo(f"    🏥 {row['hospitals']['facility_name']} ({row['facility_id']})")
+            
+            # Handle None values for prices
+            cash_price = f"${row['cash_price']:.2f}" if row['cash_price'] is not None else "N/A"
+            gross_charge = f"${row['gross_charge']:.2f}" if row['gross_charge'] is not None else "N/A"
+            click.echo(f"    💰 Cash: {cash_price} | Gross: {gross_charge}")
+            
+            # Handle None values for negotiated prices
+            if row['negotiated_min'] is not None and row['negotiated_max'] is not None:
+                negotiated = f"${row['negotiated_min']:.2f} - ${row['negotiated_max']:.2f}"
+            elif row['negotiated_min'] is not None:
+                negotiated = f"${row['negotiated_min']:.2f} - N/A"
+            elif row['negotiated_max'] is not None:
+                negotiated = f"N/A - ${row['negotiated_max']:.2f}"
+            else:
+                negotiated = "N/A - N/A"
+            click.echo(f"    📊 Negotiated: {negotiated}")
+            click.echo(f"    🏷️  Codes: {row['codes']}")
+            click.echo()
         
     except Exception as e:
         click.echo(f"❌ Query failed: {e}", err=True)
         sys.exit(1)
-    finally:
-        db_manager.close()
 
 
 @cli.command()
 def delete_all():
     """Delete all hospital and medical operation records."""
     try:
-        db_manager.initialize()
+        # Initialize Supabase client instead of direct database connection
+        supabase_manager.initialize()
         
         # Delete in correct order (operations first due to foreign key constraint)
         click.echo("🗑️  Deleting all medical operations...")
-        with db_manager.get_connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("DELETE FROM medical_operations")
-                operations_deleted = cursor.rowcount
-                conn.commit()  # Commit the transaction
+        result = supabase_manager.client.table('medical_operations').delete().neq('id', 0).execute()
+        operations_deleted = len(result.data) if result.data else 0
         click.echo(f"   Deleted {operations_deleted} medical operations")
         
         click.echo("🗑️  Deleting all hospitals...")
-        with db_manager.get_connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("DELETE FROM hospitals")
-                hospitals_deleted = cursor.rowcount
-                conn.commit()  # Commit the transaction
+        result = supabase_manager.client.table('hospitals').delete().neq('facility_id', '').execute()
+        hospitals_deleted = len(result.data) if result.data else 0
         click.echo(f"   Deleted {hospitals_deleted} hospitals")
         
         click.echo("✅ All records deleted successfully!")
@@ -329,8 +296,6 @@ def delete_all():
     except Exception as e:
         click.echo(f"❌ Delete failed: {e}", err=True)
         sys.exit(1)
-    finally:
-        db_manager.close()
 
 
 @cli.command()

@@ -217,36 +217,31 @@ class JSONProcessor:
             return
         
         try:
-            from .database import db_manager
+            from .database import supabase_manager
             
-            with db_manager.get_connection() as conn:
-                with conn.cursor() as cursor:
-                    # Prepare batch insert
-                    insert_query = """
-                        INSERT INTO medical_operations (
-                            facility_id, codes, description, cash_price, gross_charge,
-                            negotiated_min, negotiated_max, currency, ingested_at
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """
-                    
-                    values = []
-                    for op in operations:
-                        values.append((
-                            op['facility_id'],
-                            json.dumps(op['codes']),
-                            op['description'],
-                            op['cash_price'],
-                            op['gross_charge'],
-                            op['negotiated_min'],
-                            op['negotiated_max'],
-                            op['currency'],
-                            op['ingested_at']
-                        ))
-                    
-                    cursor.executemany(insert_query, values)
-                    conn.commit()
-                    
-                    logger.info(f"Inserted {len(operations)} medical operations")
+            # Initialize Supabase if not already done
+            if not supabase_manager.client:
+                supabase_manager.initialize()
+            
+            # Prepare operations data for Supabase
+            operations_data = []
+            for op in operations:
+                operations_data.append({
+                    'facility_id': op['facility_id'],
+                    'codes': op['codes'],  # Supabase handles JSON automatically
+                    'description': op['description'],
+                    'cash_price': op['cash_price'],
+                    'gross_charge': op['gross_charge'],
+                    'negotiated_min': op['negotiated_min'],
+                    'negotiated_max': op['negotiated_max'],
+                    'currency': op['currency'],
+                    'ingested_at': op['ingested_at'].isoformat()
+                })
+            
+            # Insert using Supabase client
+            supabase_manager.batch_insert_medical_operations(operations_data)
+            
+            logger.info(f"Inserted {len(operations)} medical operations")
                     
         except Exception as e:
             logger.error(f"Failed to batch insert operations: {e}")

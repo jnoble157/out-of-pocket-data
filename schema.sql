@@ -24,13 +24,15 @@ CREATE TABLE IF NOT EXISTS medical_operations (
     description TEXT NOT NULL,
     cash_price DECIMAL(10,2) NOT NULL CHECK (cash_price >= 0),
     gross_charge DECIMAL(10,2) NOT NULL CHECK (gross_charge >= 0),
-    negotiated_min DECIMAL(10,2) NOT NULL CHECK (negotiated_min >= 0),
-    negotiated_max DECIMAL(10,2) NOT NULL CHECK (negotiated_max >= 0),
+    negotiated_min DECIMAL(10,2) CHECK (negotiated_min >= 0),
+    negotiated_max DECIMAL(10,2) CHECK (negotiated_max >= 0),
     currency VARCHAR(3) DEFAULT 'USD',
     ingested_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    CONSTRAINT valid_negotiated_range CHECK (negotiated_min <= negotiated_max)
+    CONSTRAINT valid_negotiated_range CHECK (
+        negotiated_min IS NULL OR negotiated_max IS NULL OR negotiated_min <= negotiated_max
+    )
 );
 
 -- Create indexes for better query performance

@@ -136,43 +136,108 @@ class DataProcessor:
                                 break
                             rows.append(row)
                         
-                        # If we have 2 metadata rows, treat as key-value pairs
+                        # Handle different metadata row patterns
                         if len(rows) >= 2:
-                            keys = rows[0]
-                            values = rows[1]
-                            for k, v in zip(keys, values):
-                                if k and v:
-                                    key = k.strip().lower()
-                                    value = v.strip()
-                                    
-                                    # Use exact column names from the CSV
-                                    if key == 'hospital_name':
-                                        metadata['facility_name'] = value
-                                    elif key == 'last_updated_on':
-                                        metadata['last_updated'] = value
-                                    elif key == 'version':
-                                        metadata['file_version'] = value
-                                    elif key == 'hospital_location':
-                                        # Try to extract city and state from location
-                                        location_parts = value.split(',')
-                                        if len(location_parts) >= 2:
-                                            metadata['city'] = location_parts[0].strip()
-                                            state_part = location_parts[1].strip()
-                                            # Extract state (usually 2 letters)
-                                            state_match = re.search(r'\b([A-Z]{2})\b', state_part)
-                                            if state_match:
-                                                metadata['state'] = state_match.group(1)
-                                    elif key == 'hospital_address':
-                                        metadata['address'] = value
-                                        # Try to extract city and state from address if not already set
-                                        if not metadata['city']:
-                                            address_parts = value.split(',')
-                                            if len(address_parts) >= 2:
-                                                metadata['city'] = address_parts[0].strip()
-                                                state_part = address_parts[-1].strip()
+                            # Pattern 1: First row is headers, second row is values
+                            if len(rows[0]) > 0 and 'hospital_name' in str(rows[0][0]).lower():
+                                keys = rows[0]
+                                values = rows[1]
+                                for k, v in zip(keys, values):
+                                    if k and v:
+                                        key = k.strip().lower()
+                                        value = v.strip()
+                                        
+                                        # Use exact column names from the CSV
+                                        if key == 'hospital_name':
+                                            metadata['facility_name'] = value
+                                        elif key == 'last_updated_on':
+                                            metadata['last_updated'] = value
+                                        elif key == 'version':
+                                            metadata['file_version'] = value
+                                        elif key == 'hospital_location':
+                                            # Try to extract city and state from location
+                                            location_parts = value.split(',')
+                                            if len(location_parts) >= 2:
+                                                metadata['city'] = location_parts[0].strip()
+                                                state_part = location_parts[1].strip()
+                                                # Extract state (usually 2 letters)
                                                 state_match = re.search(r'\b([A-Z]{2})\b', state_part)
                                                 if state_match:
                                                     metadata['state'] = state_match.group(1)
+                                        elif key == 'hospital_address':
+                                            metadata['address'] = value
+                                            # Try to extract city and state from address if not already set
+                                            if not metadata['city']:
+                                                # Try different parsing approaches
+                                                # Approach 1: Split by comma
+                                                address_parts = value.split(',')
+                                                if len(address_parts) >= 2:
+                                                    metadata['city'] = address_parts[0].strip()
+                                                    state_part = address_parts[-1].strip()
+                                                    state_match = re.search(r'\b([A-Z]{2})\b', state_part)
+                                                    if state_match:
+                                                        metadata['state'] = state_match.group(1)
+                                                else:
+                                                    # Approach 2: Look for state pattern in the full address
+                                                    state_match = re.search(r'\b([A-Z]{2})\s+\d{5}', value)
+                                                    if state_match:
+                                                        metadata['state'] = state_match.group(1)
+                                                        # Extract city - everything before the state
+                                                        city_part = value[:state_match.start()].strip()
+                                                        # Get the last word before state (likely city name)
+                                                        city_words = city_part.split()
+                                                        if city_words:
+                                                            metadata['city'] = city_words[-1]
+                            # Pattern 2: First row is headers, second row is values (different format)
+                            elif len(rows[0]) > 0 and any('hospital' in str(cell).lower() for cell in rows[0]):
+                                keys = rows[0]
+                                values = rows[1]
+                                for k, v in zip(keys, values):
+                                    if k and v:
+                                        key = k.strip().lower()
+                                        value = v.strip()
+                                        
+                                        # Use exact column names from the CSV
+                                        if key == 'hospital_name':
+                                            metadata['facility_name'] = value
+                                        elif key == 'last_updated_on':
+                                            metadata['last_updated'] = value
+                                        elif key == 'version':
+                                            metadata['file_version'] = value
+                                        elif key == 'hospital_location':
+                                            # Try to extract city and state from location
+                                            location_parts = value.split(',')
+                                            if len(location_parts) >= 2:
+                                                metadata['city'] = location_parts[0].strip()
+                                                state_part = location_parts[1].strip()
+                                                # Extract state (usually 2 letters)
+                                                state_match = re.search(r'\b([A-Z]{2})\b', state_part)
+                                                if state_match:
+                                                    metadata['state'] = state_match.group(1)
+                                        elif key == 'hospital_address':
+                                            metadata['address'] = value
+                                            # Try to extract city and state from address if not already set
+                                            if not metadata['city']:
+                                                # Try different parsing approaches
+                                                # Approach 1: Split by comma
+                                                address_parts = value.split(',')
+                                                if len(address_parts) >= 2:
+                                                    metadata['city'] = address_parts[0].strip()
+                                                    state_part = address_parts[-1].strip()
+                                                    state_match = re.search(r'\b([A-Z]{2})\b', state_part)
+                                                    if state_match:
+                                                        metadata['state'] = state_match.group(1)
+                                                else:
+                                                    # Approach 2: Look for state pattern in the full address
+                                                    state_match = re.search(r'\b([A-Z]{2})\s+\d{5}', value)
+                                                    if state_match:
+                                                        metadata['state'] = state_match.group(1)
+                                                        # Extract city - everything before the state
+                                                        city_part = value[:state_match.start()].strip()
+                                                        # Get the last word before state (likely city name)
+                                                        city_words = city_part.split()
+                                                        if city_words:
+                                                            metadata['city'] = city_words[-1]
         except Exception as e:
             logger.warning(f"Could not extract additional metadata from {file_path}: {e}")
         
@@ -194,17 +259,14 @@ class DataProcessor:
         facility_id = generate_facility_id(metadata['facility_name'])
         metadata['facility_id'] = facility_id
         
-        # Validate that required metadata was extracted
-        required_fields = ['facility_name', 'city', 'state']
+        # Validate that required metadata was extracted - no defaults allowed
+        required_fields = ['facility_name', 'city', 'state', 'address']
         missing_fields = [field for field in required_fields if not metadata.get(field)]
         
         if missing_fields:
             raise ValueError(f"Failed to extract required metadata fields: {missing_fields}. "
-                           f"File: {file_path.name}")
-        
-        # Ensure address is set if not provided
-        if not metadata['address']:
-            metadata['address'] = f"{metadata['city']}, {metadata['state']}"
+                           f"File: {file_path.name}. "
+                           f"Please ensure the file contains proper metadata or provide it explicitly.")
         
         return metadata
     
@@ -282,36 +344,28 @@ class DataProcessor:
         try:
             hospital = Hospital(**metadata)
             
-            # Insert into database
-            with db_manager.get_connection() as conn:
-                with conn.cursor() as cursor:
-                    # Use UPSERT to handle duplicates
-                    cursor.execute("""
-                        INSERT INTO hospitals (
-                            facility_id, facility_name, city, state, address,
-                            source_url, file_version, last_updated, ingested_at
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (facility_id) DO UPDATE SET
-                            facility_name = EXCLUDED.facility_name,
-                            city = EXCLUDED.city,
-                            state = EXCLUDED.state,
-                            address = EXCLUDED.address,
-                            source_url = EXCLUDED.source_url,
-                            file_version = EXCLUDED.file_version,
-                            last_updated = EXCLUDED.last_updated,
-                            updated_at = NOW()
-                    """, (
-                        hospital.facility_id,
-                        hospital.facility_name,
-                        hospital.city,
-                        hospital.state,
-                        hospital.address,
-                        hospital.source_url,
-                        hospital.file_version,
-                        hospital.last_updated,
-                        hospital.ingested_at
-                    ))
-                    conn.commit()
+            # Use Supabase client for data insertion
+            from .database import supabase_manager
+            
+            # Initialize Supabase if not already done
+            if not supabase_manager.client:
+                supabase_manager.initialize()
+            
+            # Prepare hospital data for Supabase
+            hospital_data = {
+                'facility_id': hospital.facility_id,
+                'facility_name': hospital.facility_name,
+                'city': hospital.city,
+                'state': hospital.state,
+                'address': hospital.address,
+                'source_url': hospital.source_url,
+                'file_version': hospital.file_version,
+                'last_updated': hospital.last_updated,
+                'ingested_at': hospital.ingested_at.isoformat()
+            }
+            
+            # Insert using Supabase client (handles upserts automatically)
+            supabase_manager.insert_hospital(hospital_data)
             
             logger.info(f"Created/updated hospital record: {hospital.facility_id}")
             return hospital
