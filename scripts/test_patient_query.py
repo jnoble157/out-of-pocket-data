@@ -63,7 +63,6 @@ def test_patient_query_model():
                 if result.response:
                     print(f"HSPCS Codes: {result.response.hspcs_codes}")
                     print(f"RC Codes: {result.response.rc_codes}")
-                    print(f"CPT Codes: {result.response.cpt_codes}")
                     print(f"Confidence: {result.response.confidence:.2f}")
                     print(f"Needs Clarification: {result.response.needs_clarification}")
                     

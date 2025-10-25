@@ -15,7 +15,6 @@ class QueryResponse(BaseModel):
     """Response model for patient queries."""
     hspcs_codes: List[str] = Field(default_factory=list, description="HSPCS procedure codes")
     rc_codes: List[str] = Field(default_factory=list, description="RC procedure codes")
-    cpt_codes: List[str] = Field(default_factory=list, description="CPT procedure codes")
     confidence: float = Field(ge=0.0, le=1.0, description="Confidence score (0-1)")
     reasoning: str = Field(default="", description="Explanation of the results")
     needs_clarification: bool = Field(default=False, description="Whether query needs clarification")
@@ -76,7 +75,7 @@ class PatientQueryModel:
 
 Your task is to:
 1. Analyze the user's query about medical procedures
-2. Identify relevant HSPCS procedure codes, RC procedure codes, and CPT procedure codes
+2. Identify relevant HSPCS (Healthcare Common Procedure Coding System) procedure (which includes any CPT or Current Procedural Terminology codes you find) codes and RC (Revenue Codes) procedure codes
 3. Provide a confidence score (0-1) for the accuracy of your matches
 4. Explain your reasoning
 
@@ -85,7 +84,6 @@ If the query is too vague or unclear, respond with needs_clarification: true and
 Return your response in JSON format with the following structure:
 {
     "hspcs_codes": ["list", "of", "hspcs", "codes"],
-    "cpt_codes": ["list", "of", "cpt", "codes"],
     "rc_codes": ["list", "of", "rc", "codes"],
     "overall_confidence": 0.85,
     "reasoning": "Explanation of why these codes match the query",
@@ -93,7 +91,7 @@ Return your response in JSON format with the following structure:
     "clarification_message": null
 }
 
-It is most important to include HSPCS and CPT codes. RC codes are lower priority. Focus on common medical procedures and provide accurate, relevant codes."""
+Return as many relevant codes as you can. It is most important to include HSPCS codes. RC codes are lower priority. Focus on common medical procedures and provide accurate, relevant codes."""
     
     def process_query(self, user_query: str, system_prompt: Optional[str] = None) -> PatientQueryResult:
         """
@@ -133,7 +131,7 @@ It is most important to include HSPCS and CPT codes. RC codes are lower priority
                 )
             
             # Validate that we have some codes
-            if not response.hspcs_codes and not response.rc_codes and not response.cpt_codes:
+            if not response.hspcs_codes and not response.rc_codes:
                 logger.warning("No medical codes found in response")
                 return PatientQueryResult(
                     status=QueryStatus.NEEDS_CLARIFICATION,
@@ -171,7 +169,6 @@ It is most important to include HSPCS and CPT codes. RC codes are lower priority
             # Extract fields with defaults
             hspcs_codes = raw_response.get("hspcs_codes", [])
             rc_codes = raw_response.get("rc_codes", [])
-            cpt_codes = raw_response.get("cpt_codes", [])
             confidence = raw_response.get("overall_confidence", 0.5)
             reasoning = raw_response.get("reasoning", "")
             needs_clarification = raw_response.get("needs_clarification", False)
@@ -182,8 +179,6 @@ It is most important to include HSPCS and CPT codes. RC codes are lower priority
                 hspcs_codes = []
             if not isinstance(rc_codes, list):
                 rc_codes = []
-            if not isinstance(cpt_codes, list):
-                cpt_codes = []
             
             # Ensure confidence is a float between 0 and 1
             try:
@@ -195,7 +190,6 @@ It is most important to include HSPCS and CPT codes. RC codes are lower priority
             return QueryResponse(
                 hspcs_codes=hspcs_codes,
                 rc_codes=rc_codes,
-                cpt_codes=cpt_codes,
                 confidence=confidence,
                 reasoning=reasoning,
                 needs_clarification=needs_clarification,
@@ -208,7 +202,6 @@ It is most important to include HSPCS and CPT codes. RC codes are lower priority
             return QueryResponse(
                 hspcs_codes=[],
                 rc_codes=[],
-                cpt_codes=[],
                 confidence=0.0,
                 reasoning="Error parsing model response",
                 needs_clarification=True,

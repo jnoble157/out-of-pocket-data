@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Find medical operations by standardized codes (CPT, ICD-10, HCPCS, etc.)
+Find medical operations by standardized codes (HCPCS, RC)
 """
 import sys
 import os
@@ -17,8 +17,6 @@ from src.database import supabase_manager
 load_dotenv('.supabase.env')
 
 def find_by_codes(
-    cpt_codes: Optional[List[str]] = None,
-    icd10_codes: Optional[List[str]] = None,
     hcpcs_codes: Optional[List[str]] = None,
     rc_codes: Optional[List[str]] = None,
     facility_id: Optional[str] = None,
@@ -28,8 +26,6 @@ def find_by_codes(
     Find medical operations by standardized codes, ordered by number of matches.
     
     Args:
-        cpt_codes: List of CPT codes to search for
-        icd10_codes: List of ICD-10 codes to search for
         hcpcs_codes: List of HCPCS codes to search for
         rc_codes: List of Revenue Codes to search for
         facility_id: Filter by specific facility ID
@@ -43,32 +39,35 @@ def find_by_codes(
         supabase_manager.initialize()
         
         # Get all requested codes
-        all_codes = []
-        if cpt_codes:
-            all_codes.extend([('CPT', code) for code in cpt_codes])
-        if icd10_codes:
-            all_codes.extend([('ICD10', code) for code in icd10_codes])
-        if hcpcs_codes:
-            all_codes.extend([('HCPCS', code) for code in hcpcs_codes])
-        if rc_codes:
-            all_codes.extend([('RC', code) for code in rc_codes])
-        
-        if not all_codes:
+        if not hcpcs_codes and not rc_codes:
             return []
         
         # Build query to get all records that match any of the codes
         query = supabase_manager.client.table('medical_operations').select(
-            'facility_id, description, cash_price, gross_charge, negotiated_min, negotiated_max, codes, currency, ingested_at, hospitals!inner(facility_name, city, state)'
+            'facility_id, description, cash_price, gross_charge, negotiated_min, negotiated_max, rc_code, hcpcs_code, currency, ingested_at, hospitals!inner(facility_name, city, state)'
         )
         
         # Apply facility filter if specified
         if facility_id:
             query = query.eq('facility_id', facility_id)
         
-        # Apply OR condition for any matching codes
-        or_conditions = []
-        for code_type, code in all_codes:
-            or_conditions.append({'codes': {code_type: [code]}})
+        # Build OR conditions for code matching
+        # Use Supabase's or_() method with proper syntax
+        if hcpcs_codes or rc_codes:
+            all_filters = []
+            
+            # Add HCPCS code filters
+            for code in hcpcs_codes:
+                all_filters.append(f'hcpcs_code.eq.{code}')
+            
+            # Add RC code filters
+            for code in rc_codes:
+                all_filters.append(f'rc_code.eq.{code}')
+            
+            # Apply OR filter (Supabase expects a comma-separated string)
+            if all_filters:
+                or_condition = ','.join(all_filters)
+                query = query.or_(or_condition)
         
         # Execute query to get all potential matches
         result = query.execute()
@@ -81,15 +80,18 @@ def find_by_codes(
         for record in result.data:
             match_count = 0
             non_rc_matches = 0
-            codes = record.get('codes', {})
             
-            # Count matches for each requested code
-            for code_type, code in all_codes:
-                if code_type in codes and code in codes[code_type]:
+            # Check HCPCS matches
+            if hcpcs_codes and record.get('hcpcs_code'):
+                if record['hcpcs_code'] in hcpcs_codes:
                     match_count += 1
-                    # Track non-RC matches for prioritization
-                    if code_type != 'RC':
-                        non_rc_matches += 1
+                    non_rc_matches += 1
+            
+            # Check RC matches
+            if rc_codes and record.get('rc_code'):
+                if record['rc_code'] in rc_codes:
+                    match_count += 1
+                    # RC matches don't count toward non_rc_matches
             
             # Only include records with at least one match
             if match_count > 0:
@@ -141,8 +143,16 @@ def format_results(results: List[Dict[str, Any]]) -> None:
         print(f"   📊 Negotiated: {negotiated}")
         
         # Format codes
-        codes_str = json.dumps(record['codes'], indent=2)
-        print(f"   🏷️  Codes:\n{codes_str}")
+        codes_display = {}
+        if record.get('hcpcs_code'):
+            codes_display['HCPCS'] = record['hcpcs_code']
+        if record.get('rc_code'):
+            codes_display['RC'] = record['rc_code']
+        
+        if codes_display:
+            codes_str = json.dumps(codes_display, indent=2)
+            print(f"   🏷️  Codes:\n{codes_str}")
+        
         print(f"   📅 Ingested: {record['ingested_at']}")
         print()
 
@@ -151,8 +161,6 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(description='Find medical operations by standardized codes')
-    parser.add_argument('--cpt', nargs='+', help='CPT codes to search for')
-    parser.add_argument('--icd10', nargs='+', help='ICD-10 codes to search for')
     parser.add_argument('--hcpcs', nargs='+', help='HCPCS codes to search for')
     parser.add_argument('--rc', nargs='+', help='Revenue codes to search for')
     parser.add_argument('--facility-id', help='Filter by facility ID')
@@ -162,15 +170,13 @@ def main():
     args = parser.parse_args()
     
     # Check if any codes were provided
-    if not any([args.cpt, args.icd10, args.hcpcs, args.rc]):
-        print("❌ Please provide at least one code type (--cpt, --icd10, --hcpcs, --rc)")
+    if not args.hcpcs and not args.rc:
+        print("❌ Please provide at least one code type (--hcpcs, --rc)")
         parser.print_help()
         return
     
     # Search for records
     results = find_by_codes(
-        cpt_codes=args.cpt,
-        icd10_codes=args.icd10,
         hcpcs_codes=args.hcpcs,
         rc_codes=args.rc,
         facility_id=args.facility_id,

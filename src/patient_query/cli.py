@@ -137,12 +137,6 @@ class PatientQueryCLI:
                 output.append(f"   • {code}")
             output.append("")
         
-        if response.cpt_codes:
-            output.append("🔬 CPT Procedure Codes:")
-            for code in response.cpt_codes:
-                output.append(f"   • {code}")
-            output.append("")
-        
         # Confidence score
         confidence_emoji = "🟢" if response.confidence >= 0.8 else "🟡" if response.confidence >= 0.6 else "🔴"
         output.append(f"{confidence_emoji} Confidence Score: {response.confidence:.1%}")

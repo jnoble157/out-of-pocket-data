@@ -77,7 +77,7 @@ class ClaudeProvider(ModelProvider):
             # Parse JSON response
             result = self._parse_claude_response(response_text)
             
-            logger.info(f"Successfully parsed Claude response with {len(result.get('hspcs_codes', []))} HSPCS codes, {len(result.get('rc_codes', []))} RC codes, and {len(result.get('cpt_codes', []))} CPT codes")
+            logger.info(f"Successfully parsed Claude response with {len(result.get('hspcs_codes', []))} HSPCS codes and {len(result.get('rc_codes', []))} RC codes")
             
             return result
             
@@ -159,7 +159,6 @@ class ClaudeProvider(ModelProvider):
         validated_result = {
             "hspcs_codes": result.get("hspcs_codes", []),
             "rc_codes": result.get("rc_codes", []),
-            "cpt_codes": result.get("cpt_codes", []),
             "overall_confidence": result.get("overall_confidence", 0.5),
             "reasoning": result.get("reasoning", ""),
             "needs_clarification": result.get("needs_clarification", False),
@@ -171,8 +170,6 @@ class ClaudeProvider(ModelProvider):
             validated_result["hspcs_codes"] = []
         if not isinstance(validated_result["rc_codes"], list):
             validated_result["rc_codes"] = []
-        if not isinstance(validated_result["cpt_codes"], list):
-            validated_result["cpt_codes"] = []
         
         # Ensure confidence is a float between 0 and 1
         try:
@@ -198,7 +195,6 @@ class ClaudeProvider(ModelProvider):
         # Try to extract some information from the text
         hspcs_codes = []
         rc_codes = []
-        cpt_codes = []
         
         # Look for common patterns in the response
         lines = response_text.split('\n')
@@ -216,7 +212,6 @@ class ClaudeProvider(ModelProvider):
         return {
             "hspcs_codes": hspcs_codes,
             "rc_codes": rc_codes,
-            "cpt_codes": cpt_codes,
             "overall_confidence": 0.3,  # Low confidence due to parsing failure
             "reasoning": f"Could not parse Claude's response properly. Raw response: {response_text[:200]}...",
             "needs_clarification": True,
