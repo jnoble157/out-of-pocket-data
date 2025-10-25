@@ -411,7 +411,7 @@ class CombinedPatientQueryCLI:
             # Step 3: Search Supabase with the codes (cached or fresh)
             print("\n🗄️  Step 3: Searching database with codes...")
             db_results = self.search_supabase_by_codes(
-                hspcs_codes=hspcs_codes,
+                hcpcs_codes=hspcs_codes,
                 rc_codes=rc_codes,
                 limit=20
             )
