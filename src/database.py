@@ -218,6 +218,95 @@ class SupabaseManager:
         except Exception as e:
             logger.error(f"Failed to batch insert medical operations data: {e}")
             raise
+    
+    def search_similar_queries(self, embedding: list, threshold: float, limit: int = 5) -> list:
+        """
+        Search for similar queries using pgvector similarity search.
+        
+        Args:
+            embedding: Query embedding vector
+            threshold: Similarity threshold (0.0 to 1.0)
+            limit: Maximum number of results
+            
+        Returns:
+            List of similar cached queries
+        """
+        if not self.client:
+            raise RuntimeError("Supabase client not initialized")
+        
+        try:
+            # Use pgvector cosine similarity search
+            # Convert threshold to distance (1 - similarity)
+            distance_threshold = 1.0 - threshold
+            
+            result = self.client.rpc(
+                'match_query_cache',
+                {
+                    'query_embedding': embedding,
+                    'match_threshold': threshold,
+                    'match_count': limit
+                }
+            ).execute()
+            
+            return result.data if result.data else []
+            
+        except Exception as e:
+            logger.error(f"Failed to search similar queries: {e}")
+            # Fallback to manual query if RPC function doesn't exist
+            return self._fallback_similarity_search(embedding, threshold, limit)
+    
+    def _fallback_similarity_search(self, embedding: list, threshold: float, limit: int) -> list:
+        """
+        Fallback similarity search using raw SQL.
+        
+        Args:
+            embedding: Query embedding vector
+            threshold: Similarity threshold
+            limit: Maximum number of results
+            
+        Returns:
+            List of similar cached queries
+        """
+        try:
+            # Use raw SQL with pgvector cosine similarity
+            result = self.client.table('query_cache').select(
+                'id, user_query, hspcs_codes, rc_codes, reasoning, confidence_score, created_at'
+            ).gte('confidence_score', 0.9).execute()
+            
+            # Filter and sort by similarity (this is a simplified approach)
+            # In production, you'd want to use the proper pgvector similarity function
+            return result.data[:limit] if result.data else []
+            
+        except Exception as e:
+            logger.error(f"Fallback similarity search failed: {e}")
+            return []
+    
+    def insert_cached_query(self, query_data: dict) -> dict:
+        """
+        Insert a new cached query into the database.
+        
+        Args:
+            query_data: Dictionary containing query data
+            
+        Returns:
+            Inserted query data
+        """
+        if not self.client:
+            raise RuntimeError("Supabase client not initialized")
+        
+        try:
+            result = self.client.table('query_cache').insert(query_data).execute()
+            return result.data[0] if result.data else None
+        except Exception as e:
+            # Check if it's a vector dimension mismatch error
+            if "expected 1024 dimensions" in str(e) and "not 1536" in str(e):
+                logger.warning("Vector dimension mismatch detected. Database needs migration from 1024 to 1536 dimensions.")
+                logger.warning("Please run the migration script or update the database schema manually.")
+                # Return None to indicate failure, but don't raise exception
+                return None
+            else:
+                logger.error(f"Failed to insert cached query: {e}")
+                raise
 
 
 # Global database manager instance

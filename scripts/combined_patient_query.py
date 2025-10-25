@@ -13,8 +13,10 @@ from typing import Optional, List, Dict, Any
 # Add the parent directory to the path so we can import from src
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from patient_query import PatientQueryModel, ClaudeProvider, QueryStatus
+from patient_query.patient_query_model import PatientQueryModel, QueryStatus
+from patient_query.claude import ClaudeProvider
 from database import supabase_manager
+from query_cache import QueryCacheManager
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -27,6 +29,7 @@ class CombinedPatientQueryCLI:
     def __init__(self):
         """Initialize the combined CLI."""
         self.query_model: Optional[PatientQueryModel] = None
+        self.cache_manager: Optional[QueryCacheManager] = None
         self.running = True
         
     def initialize(self) -> bool:
@@ -57,6 +60,10 @@ class CombinedPatientQueryCLI:
             print("🗄️  Initializing Supabase connection...")
             supabase_manager.initialize()
             
+            # Initialize query cache manager
+            print("🧠 Initializing query cache system...")
+            self.cache_manager = QueryCacheManager()
+            
             print("✅ Combined system initialized successfully!")
             return True
             
@@ -82,6 +89,9 @@ class CombinedPatientQueryCLI:
         print("  • Type 'help' for more examples")
         print("  • Type 'quit' or 'exit' to stop")
         print("  • Type 'clear' to clear the screen")
+        print("  • Type 'status' to check system status")
+        print("  • Type 'cache-stats' to view cache statistics")
+        print("  • Type 'clear-cache' to clear the query cache")
         print("="*70)
     
     def display_help(self):
@@ -329,29 +339,80 @@ class CombinedPatientQueryCLI:
         print("-" * 50)
         
         try:
-            # Step 1: Get codes from Claude
-            print("🤖 Step 1: Getting medical codes from Claude...")
-            result = self.query_model.process_query(user_input)
+            # Step 1: Check cache first
+            cached_result = None
+            if self.cache_manager:
+                print("🧠 Step 1: Checking cache for similar queries...")
+                cached_result = self.cache_manager.check_cache(user_input)
+                
+                if cached_result:
+                    print(f"✅ Cache hit found! (Similarity: {cached_result.similarity_score:.1%})")
+                    print(f"📋 Using cached codes from: '{cached_result.original_query}'")
+                    
+                    # Use cached codes
+                    hspcs_codes = cached_result.hspcs_codes
+                    rc_codes = cached_result.rc_codes
+                    reasoning = cached_result.reasoning
+                    confidence = cached_result.confidence_score
+                    
+                    # Display cached codes
+                    print("\n🏥 Cached Medical Codes:")
+                    if hspcs_codes:
+                        print("   HSPCS Procedure Codes:")
+                        for code in hspcs_codes:
+                            print(f"   • {code}")
+                    if rc_codes:
+                        print("   RC Procedure Codes:")
+                        for code in rc_codes:
+                            print(f"   • {code}")
+                    
+                    print(f"\n💭 Cached Reasoning: {reasoning}")
+                    print(f"🎯 Cached Confidence: {confidence:.1%}")
+                    
+                else:
+                    print("❌ No cache hit found, proceeding with Claude API...")
             
-            # Display codes
-            codes_output = self.format_codes_response(result)
-            print(codes_output)
+            # Step 2: If no cache hit, get codes from Claude
+            if not cached_result:
+                print("\n🤖 Step 2: Getting medical codes from Claude...")
+                result = self.query_model.process_query(user_input)
+                
+                # Display codes
+                codes_output = self.format_codes_response(result)
+                print(codes_output)
+                
+                # Check if we got codes to search with
+                if result.status != QueryStatus.SUCCESS or not result.response:
+                    print("⚠️  Cannot search database without valid codes.")
+                    return
+                
+                response = result.response
+                if not response.hspcs_codes and not response.rc_codes:
+                    print("⚠️  No codes found to search database with.")
+                    return
+                
+                # Use fresh codes from Claude
+                hspcs_codes = response.hspcs_codes
+                rc_codes = response.rc_codes
+                reasoning = response.reasoning
+                confidence = response.confidence
+                
+                # Store in cache if confidence is high enough
+                if self.cache_manager and confidence >= 0.90:
+                    print("💾 Storing high-confidence result in cache...")
+                    self.cache_manager.store_cache(
+                        query=user_input,
+                        hspcs_codes=hspcs_codes,
+                        rc_codes=rc_codes,
+                        reasoning=reasoning,
+                        confidence=confidence
+                    )
             
-            # Check if we got codes to search with
-            if result.status != QueryStatus.SUCCESS or not result.response:
-                print("⚠️  Cannot search database without valid codes.")
-                return
-            
-            response = result.response
-            if not response.hspcs_codes and not response.rc_codes:
-                print("⚠️  No codes found to search database with.")
-                return
-            
-            # Step 2: Search Supabase with the codes
-            print("\n🗄️  Step 2: Searching database with codes...")
+            # Step 3: Search Supabase with the codes (cached or fresh)
+            print("\n🗄️  Step 3: Searching database with codes...")
             db_results = self.search_supabase_by_codes(
-                hspcs_codes=response.hspcs_codes,
-                rc_codes=response.rc_codes,
+                hspcs_codes=hspcs_codes,
+                rc_codes=rc_codes,
                 limit=20
             )
             
@@ -384,8 +445,47 @@ class CombinedPatientQueryCLI:
                 print("✅ Patient Query Model is running")
                 print("🔌 Claude API connection is active")
                 print("🗄️  Supabase database is connected")
+                
+                # Show cache status
+                if self.cache_manager:
+                    cache_stats = self.cache_manager.get_cache_stats()
+                    print(f"🧠 Query cache: {'enabled' if cache_stats['cache_enabled'] else 'disabled'}")
+                    print(f"🔗 Embeddings: {'available' if cache_stats.get('embeddings_available', False) else 'unavailable'}")
+                    print(f"📊 Cached queries: {cache_stats['total_queries']}")
+                    print(f"🎯 High-confidence queries: {cache_stats['high_confidence_queries']}")
+                    print(f"⚙️  Similarity threshold: {cache_stats['similarity_threshold']}")
+                else:
+                    print("❌ Query cache not initialized")
             else:
                 print("❌ System is not initialized")
+            return True
+        
+        elif command == 'cache-stats':
+            if self.cache_manager:
+                cache_stats = self.cache_manager.get_cache_stats()
+                print("\n📊 CACHE STATISTICS")
+                print("=" * 30)
+                print(f"Cache enabled: {cache_stats['cache_enabled']}")
+                print(f"Embeddings available: {cache_stats.get('embeddings_available', False)}")
+                print(f"Total cached queries: {cache_stats['total_queries']}")
+                print(f"High-confidence queries: {cache_stats['high_confidence_queries']}")
+                print(f"Similarity threshold: {cache_stats['similarity_threshold']}")
+                print(f"Min confidence to cache: {cache_stats['min_confidence_to_cache']}")
+                if 'error' in cache_stats:
+                    print(f"Error: {cache_stats['error']}")
+            else:
+                print("❌ Cache manager not initialized")
+            return True
+        
+        elif command == 'clear-cache':
+            if self.cache_manager:
+                print("🗑️  Clearing query cache...")
+                if self.cache_manager.clear_cache():
+                    print("✅ Cache cleared successfully")
+                else:
+                    print("❌ Failed to clear cache")
+            else:
+                print("❌ Cache manager not initialized")
             return True
         
         return False
